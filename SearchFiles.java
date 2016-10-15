@@ -252,7 +252,7 @@ public class SearchFiles {
   }
 
   // Removes all but the N heaviest components from the query
-  private static void Purge(TermWeight[] query) {
+  private static TermWeight[] Purge(TermWeight[] query) {
     ArrayList<TermWeight> tmp = new ArrayList<>(Arrays.asList(query));
     Collections.sort(tmp, new Comparator<TermWeight>() {
       @Override
@@ -274,6 +274,8 @@ public class SearchFiles {
     query = new TermWeight[N];
     for (int i = 0; i < N; ++i)
       query[i] = tmp.get(i);
+
+    return query;
   }
 
   // With the given query and the list of results, it computes a new query using Rocchio's rule
@@ -314,7 +316,7 @@ public class SearchFiles {
     TermWeight[] newQuery = add(R1,R2);
 
     // Purge new query
-    Purge(newQuery);
+    newQuery = Purge(newQuery);
 
     // Transform the TermWeight array into an instance of Lucene Query class
     StringBuilder sb = new StringBuilder();
