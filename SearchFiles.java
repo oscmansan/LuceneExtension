@@ -20,7 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Date;
+import java.util.*;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
@@ -29,10 +29,13 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queryParser.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermFreqVector;
 
 /** Simple command-line based search demo. */
 public class SearchFiles {
@@ -123,8 +126,8 @@ public class SearchFiles {
         System.out.println("Time: "+(end.getTime()-start.getTime())+"ms");
       }
 
-        int nrounds = 5;
-        query = userRelevanceFeedback(query,searcher,nrounds);
+      int nrounds = 5;
+      query = userRelevanceFeedback(query,searcher,nrounds);
       doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
 
       if (queryString != null) {
@@ -135,48 +138,129 @@ public class SearchFiles {
     reader.close();
   }
 
-  TermWeight[] add(TermWeight[] v1, TermWeight[] v2) {
+  static HashMap<String,Double> idfs = new HashMap<>();
 
+  // returns the number of documents where string s appears
+  private static int docFreq(IndexReader reader, String s) throws Exception {
+    return reader.docFreq(new Term("contents",s));
   }
 
-  TermWeight[] multByConst(double a, Termweight[] v) {
+  // Returns an array of TermWeights representing
+  // the document whose identifier in reader is docId in tf-idf format,
+  // with base 10 logs.
+  // The vector is not normalized (may have length != 1)
+  private static TermWeight[] toTfIdf(IndexReader reader, int docId) throws Exception {
+    // get Lucene representation of a Term-Frequency vector
+    TermFreqVector tfv = reader.getTermFreqVector(docId,"contents");
 
+    // split it into two Arrays: one for terms, one for frequencies;
+    // Lucene guarantees that terms are sorted
+    String[] terms = tfv.getTerms();
+    int[] freqs = tfv.getTermFrequencies();
+
+    TermWeight[] tw = new TermWeight[terms.length];
+
+    // compute the maximum frequence of a term in the document
+    int fmax = freqs[0];
+    for (int i = 1; i < freqs.length; i++) {
+      if (freqs[i] > fmax) fmax = freqs[i];
+    }
+
+    // number of docs in the index
+    int nDocs = reader.numDocs();
+
+    for (int i = 0; i < tw.length; i++) {
+      //... code to compute stuff ...
+      String term = terms[i];
+      double tf = (double)freqs[i] / (double)fmax;
+      double idf;
+      if (idfs.containsKey(term)) {
+        idf = idfs.get(term);
+      }
+      else {
+        double df = docFreq(reader,term);
+        idf = Math.log10(nDocs / df);
+        idfs.put(term,idf);
+      }
+      double w = tf*idf;
+
+      tw[i] = new TermWeight(term,w);
+    }
+
+    return tw;
   }
 
-  Query Rocchio(Query query, Topdocs results, int k, IndexReader reader) {
-      // Get document vectors
-      TermWeight[][] docs = new TermWeight[][k];
-      for (int i = 0; i < k; ++i) {
-          ScoreDoc = results[i];
-          docId = ScoreDoc.doc;
-          docs[i] = toTfIdf(reader,docId);
-      }
+  // Normalizes the weights in t so that they form a unit-length vector
+  // It is assumed that not all weights are 0
+  private static void normalize(TermWeight[] t) {
+    double norm = 0;
+    for (TermWeight tw : t) {
+      norm += Math.pow(tw.getWeight(),2);
+    }
+    norm = Math.sqrt(norm);
 
-      // Get query vector
-      Set<Term> queryTerms;
-      query.extractTerms(queryTerms);
-      TermWeight[] qv = new TermWeight[queryTerms.size()];
-      int i = 0;
-      for (Term t : queryTerms) {
-          qv[i] = new TermWeight(t.text(),1);
-          ++i;
-      }
-
-      // Apply Rocchio's rule
-      const double a;
-      const double b;
-
-      TermWeight[] r = ;
-      for (int i = 0; i < ) {
-          
-      }
-
+    for (int i = 0; i < t.length; i++) {
+      t[i].setWeight(t[i].getWeight() / norm);
+    }
   }
 
-  Query userRelevanceFeedback(Query query, IndexSearcher searcher, int nrounds) {
-      const int k = 5;
+  // prints the list of pairs (term,weight) in v
+  private static void printTermWeightVector(TermWeight[] v) {
+    for (TermWeight tw : v) {
+      System.out.println(tw.getText() + " " + tw.getWeight());
+    }
+  }
+
+  private static TermWeight[] add(TermWeight[] v1, TermWeight[] v2) {
+    return null;
+  }
+
+  private static TermWeight[] multByConst(double a, TermWeight[] v) {
+    return null;
+  }
+
+  private static Query Rocchio(Query query, TopDocs results, int k, IndexReader reader) throws Exception {
+    // Get document vectors
+    TermWeight[][] docs = new TermWeight[k][];
+    ScoreDoc[] scoreDocs = results.scoreDocs;
+    for (int i = 0; i < k; ++i) {
+        ScoreDoc scoreDoc = scoreDocs[i];
+        int docId = scoreDoc.doc;
+        docs[i] = toTfIdf(reader,docId);
+    }
+
+    // Get query vector
+    Set<Term> queryTerms = null;
+    query.extractTerms(queryTerms);
+    TermWeight[] qv = new TermWeight[queryTerms.size()];
+    int j = 0;
+    for (Term t : queryTerms) {
+        qv[j] = new TermWeight(t.text(),1);
+        ++j;
+    }
+
+    // Apply Rocchio's rule
+    double a = 0.75;
+    double b = 0.25;
+
+    TermWeight[] R1 = multByConst(a,qv);
+
+    TermWeight[] sum = docs[0];
+    for (int i = 1; i < k; ++i) {
+        sum = add(sum,docs[i]);
+    }
+    TermWeight[] R2 = multByConst(b/k,sum);
+
+    TermWeight[] R = add(R1,R2);
+    printTermWeightVector(R);
+
+    return new PhraseQuery();
+  }
+
+  public static Query userRelevanceFeedback(Query query, IndexSearcher searcher, int nrounds) throws Exception {
+      int k = 5;
       for (int i = 1; i < nrounds; i++) {
-          Topdocs results = searcher.search(query, k);
+          TopDocs results = searcher.search(query, k);
           IndexReader reader = searcher.getIndexReader();
           query = Rocchio(query, results, k, reader);
       }
