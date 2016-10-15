@@ -212,11 +212,36 @@ public class SearchFiles {
   }
 
   private static TermWeight[] add(TermWeight[] v1, TermWeight[] v2) {
-    return null;
+    int i = 0;
+    int j = 0;
+    ArrayList<TermWeight> sum = new ArrayList<>();
+    while (i < v1.length && j < v2.length) {
+      String t1 = v1[i].getText();
+      String t2 = v2[j].getText();
+      int cmp = t1.compareTo(t2);
+
+      if (cmp < 0) {
+        sum.add(new TermWeight(t1, v1[i].getWeight()));
+        ++i;
+      }
+      else if (cmp > 0) {
+        sum.add(new TermWeight(t2, v2[j].getWeight()));
+        ++j;
+      }
+      else {
+        sum.add(new TermWeight(t1, v1[i].getWeight() + v2[j].getWeight()));
+        ++i; ++j;
+      }
+    }
+    return (TermWeight[])sum.toArray();
   }
 
   private static TermWeight[] multByConst(double a, TermWeight[] v) {
-    return null;
+    TermWeight[] res = new TermWeight[v.length];
+    for (int i = 0; i < v.length; ++i) {
+      res[i] = new TermWeight(v[i].getText(), a*v[i].getWeight());
+    }
+    return res;
   }
 
   private static Query Rocchio(Query query, TopDocs results, int k, IndexReader reader) throws Exception {
@@ -224,9 +249,10 @@ public class SearchFiles {
     TermWeight[][] docs = new TermWeight[k][];
     ScoreDoc[] scoreDocs = results.scoreDocs;
     for (int i = 0; i < k; ++i) {
-        ScoreDoc scoreDoc = scoreDocs[i];
-        int docId = scoreDoc.doc;
-        docs[i] = toTfIdf(reader,docId);
+      ScoreDoc scoreDoc = scoreDocs[i];
+      int docId = scoreDoc.doc;
+      docs[i] = toTfIdf(reader,docId);
+      normalize(docs[i]);
     }
 
     // Get query vector
@@ -238,6 +264,7 @@ public class SearchFiles {
         qv[j] = new TermWeight(t.text(),1);
         ++j;
     }
+    normalize(qv);
 
     // Apply Rocchio's rule
     double a = 0.75;
