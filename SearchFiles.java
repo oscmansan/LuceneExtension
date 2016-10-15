@@ -126,7 +126,7 @@ public class SearchFiles {
         System.out.println("Time: "+(end.getTime()-start.getTime())+"ms");
       }
 
-      int nrounds = 3;
+      int nrounds = 5;
       query = userRelevanceFeedback(query,searcher,nrounds);
       doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
 
@@ -138,6 +138,7 @@ public class SearchFiles {
     reader.close();
   }
 
+  // Structure to store and retrieve idf terms efficiently
   static HashMap<String,Double> idfs = new HashMap<>();
 
   // returns the number of documents where string s appears
@@ -211,6 +212,7 @@ public class SearchFiles {
     }
   }
 
+  // Adds two TermWeight vectors in compressed form
   private static TermWeight[] add(TermWeight[] v1, TermWeight[] v2) {
     int i = 0;
     int j = 0;
@@ -240,6 +242,7 @@ public class SearchFiles {
     return res;
   }
 
+  // Multiplies a TermWeight vector by a constant
   private static TermWeight[] multByConst(double a, TermWeight[] v) {
     TermWeight[] res = new TermWeight[v.length];
     for (int i = 0; i < v.length; ++i) {
@@ -248,7 +251,8 @@ public class SearchFiles {
     return res;
   }
 
-  private static TermWeight[] Purge(TermWeight[] query) {
+  // Removes all but the N heaviest components from the query
+  private static void Purge(TermWeight[] query) {
     ArrayList<TermWeight> tmp = new ArrayList<>(Arrays.asList(query));
     Collections.sort(tmp, new Comparator<TermWeight>() {
       @Override
@@ -256,12 +260,12 @@ public class SearchFiles {
         double w1 = tw1.getWeight();
         double w2 = tw2.getWeight();
         if (w1 != w2) {
-          return (w1 < w2) ? 1 : -1;
+          return (w1 < w2) ? 1 : -1; // descending order
         }
         else {
           String t1 = tw1.getText();
           String t2 = tw2.getText();
-          return t2.compareTo(t1);
+          return t2.compareTo(t1);   // descending order
         }
       }
     });
@@ -270,10 +274,9 @@ public class SearchFiles {
     query = new TermWeight[N];
     for (int i = 0; i < N; ++i)
       query[i] = tmp.get(i);
-
-    return query;
   }
 
+  // With the given query and the list of results, it computes a new query using Rocchio's rule
   private static Query Rocchio(Query query, TopDocs results, int k, IndexReader reader) throws Exception {
     // Get document vectors
     TermWeight[][] docs = new TermWeight[k][];
@@ -311,7 +314,7 @@ public class SearchFiles {
     TermWeight[] newQuery = add(R1,R2);
 
     // Purge new query
-    newQuery = Purge(newQuery);
+    Purge(newQuery);
 
     // Transform the TermWeight array into an instance of Lucene Query class
     StringBuilder sb = new StringBuilder();
