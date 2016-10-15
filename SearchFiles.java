@@ -126,7 +126,7 @@ public class SearchFiles {
         System.out.println("Time: "+(end.getTime()-start.getTime())+"ms");
       }
 
-      int nrounds = 5;
+      int nrounds = 3;
       query = userRelevanceFeedback(query,searcher,nrounds);
       doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
 
@@ -233,7 +233,11 @@ public class SearchFiles {
         ++i; ++j;
       }
     }
-    return (TermWeight[])sum.toArray();
+
+    // Convert to array
+    TermWeight[] res = new TermWeight[sum.size()];
+    sum.toArray(res);
+    return res;
   }
 
   private static TermWeight[] multByConst(double a, TermWeight[] v) {
@@ -242,6 +246,32 @@ public class SearchFiles {
       res[i] = new TermWeight(v[i].getText(), a*v[i].getWeight());
     }
     return res;
+  }
+
+  private static TermWeight[] Purge(TermWeight[] query) {
+    ArrayList<TermWeight> tmp = new ArrayList<>(Arrays.asList(query));
+    Collections.sort(tmp, new Comparator<TermWeight>() {
+      @Override
+      public int compare(final TermWeight tw1, final TermWeight tw2) {
+        double w1 = tw1.getWeight();
+        double w2 = tw2.getWeight();
+        if (w1 != w2) {
+          return (w1 < w2) ? 1 : -1;
+        }
+        else {
+          String t1 = tw1.getText();
+          String t2 = tw2.getText();
+          return t2.compareTo(t1);
+        }
+      }
+    });
+
+    int N = 10;
+    query = new TermWeight[N];
+    for (int i = 0; i < N; ++i)
+      query[i] = tmp.get(i);
+
+    return query;
   }
 
   private static Query Rocchio(Query query, TopDocs results, int k, IndexReader reader) throws Exception {
@@ -256,7 +286,7 @@ public class SearchFiles {
     }
 
     // Get query vector
-    Set<Term> queryTerms = null;
+    Set<Term> queryTerms = new HashSet<Term>();
     query.extractTerms(queryTerms);
     TermWeight[] qv = new TermWeight[queryTerms.size()];
     int j = 0;
@@ -278,18 +308,31 @@ public class SearchFiles {
     }
     TermWeight[] R2 = multByConst(b/k,sum);
 
-    TermWeight[] R = add(R1,R2);
-    printTermWeightVector(R);
+    TermWeight[] newQuery = add(R1,R2);
 
-    return new PhraseQuery();
+    // Purge new query
+    newQuery = Purge(newQuery);
+
+    // Transform the TermWeight array into an instance of Lucene Query class
+    StringBuilder sb = new StringBuilder();
+    for (TermWeight tw : newQuery) {
+      sb.append(tw.getText() + "^" + tw.getWeight() + " ");
+    }
+
+    Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_31);
+    QueryParser parser = new QueryParser(Version.LUCENE_31, "contents", analyzer);
+    query = parser.parse(sb.toString());
+
+    return query;
   }
 
   public static Query userRelevanceFeedback(Query query, IndexSearcher searcher, int nrounds) throws Exception {
       int k = 5;
       for (int i = 1; i < nrounds; i++) {
-          TopDocs results = searcher.search(query, k);
-          IndexReader reader = searcher.getIndexReader();
-          query = Rocchio(query, results, k, reader);
+        TopDocs results = searcher.search(query, k);
+        k = Math.min(k,results.totalHits);
+        IndexReader reader = searcher.getIndexReader();
+        query = Rocchio(query, results, k, reader);
       }
       return query;
   }
