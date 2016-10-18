@@ -139,7 +139,7 @@ public class SearchFiles {
   }
 
   // Structure to store and retrieve idf terms efficiently
-  static HashMap<String,Double> idfs = new HashMap<>();
+  private static HashMap<String,Double> idfs = new HashMap<>();
 
   // returns the number of documents where string s appears
   private static int docFreq(IndexReader reader, String s) throws Exception {
@@ -280,6 +280,9 @@ public class SearchFiles {
 
   // With the given query and the list of results, it computes a new query using Rocchio's rule
   private static Query Rocchio(Query query, TopDocs results, int k, IndexReader reader) throws Exception {
+    k = Math.min(k,results.scoreDocs.length);
+    if (k == 0) return query;
+
     // Get document vectors
     TermWeight[][] docs = new TermWeight[k][];
     ScoreDoc[] scoreDocs = results.scoreDocs;
@@ -334,11 +337,18 @@ public class SearchFiles {
   public static Query userRelevanceFeedback(Query query, IndexSearcher searcher, int nrounds) throws Exception {
       int k = 5;
       for (int i = 1; i < nrounds; i++) {
-        TopDocs results = searcher.search(query, k);
+        TopDocs results;
+        try {
+          results = searcher.search(query, k);
+        }
+        catch (Exception e) {
+          break;
+        }
         k = Math.min(k,results.totalHits);
         IndexReader reader = searcher.getIndexReader();
         query = Rocchio(query, results, k, reader);
       }
+
       return query;
   }
 
