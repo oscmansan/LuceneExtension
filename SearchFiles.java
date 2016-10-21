@@ -40,6 +40,12 @@ import org.apache.lucene.index.TermFreqVector;
 /** Simple command-line based search demo. */
 public class SearchFiles {
 
+  public static int k = 5;
+  public static int N = 10;
+  public static double a = 0.75;
+  public static double b = 0.25;
+  public static int nrounds = 5;
+
   private SearchFiles() {}
 
   /** Simple command-line based search demo. */
@@ -126,8 +132,16 @@ public class SearchFiles {
         System.out.println("Time: "+(end.getTime()-start.getTime())+"ms");
       }
 
-      int nrounds = 5;
       query = userRelevanceFeedback(query,searcher,nrounds);
+
+      Set<Term> queryTerms = new HashSet<Term>();
+      query.extractTerms(queryTerms);
+      System.out.print("[");
+      for (Term t : queryTerms) {
+        System.out.print(t.text() + " ");
+      }
+      System.out.print("]\n");
+
       doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
 
       if (queryString != null) {
@@ -270,7 +284,6 @@ public class SearchFiles {
       }
     });
 
-    int N = 10;
     query = new TermWeight[N];
     for (int i = 0; i < N; ++i)
       query[i] = tmp.get(i);
@@ -305,9 +318,6 @@ public class SearchFiles {
     normalize(qv);
 
     // Apply Rocchio's rule
-    double a = 0.75;
-    double b = 0.25;
-
     TermWeight[] R1 = multByConst(a,qv);
 
     TermWeight[] sum = docs[0];
@@ -335,7 +345,6 @@ public class SearchFiles {
   }
 
   public static Query userRelevanceFeedback(Query query, IndexSearcher searcher, int nrounds) throws Exception {
-      int k = 5;
       for (int i = 1; i < nrounds; i++) {
         TopDocs results;
         try {
